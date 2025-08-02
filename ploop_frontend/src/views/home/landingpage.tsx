@@ -38,11 +38,11 @@ function LandingPage() {
         {/* Header Section */}
         <div className="text-center mb-6 max-w-4xl">
           <h1 className="text-[#1E2A56] font-semibold text-2xl sm:text-3xl md:text-4xl lg:text-4xl leading-snug mb-3">
-            Discover the{' '}
+            Discover Verified{' '}
             <span className="font-extrabold bg-gradient-to-r from-[#1E2A56] to-[#4A5FBF] bg-clip-text text-transparent">
-              Best Property Investments
+              Property Investments
             </span>{' '}
-            Based on Spatial Data
+            Blockchain & Spatial Intelligence
           </h1>
 
           <p className="text-slate-600 text-sm sm:text-base md:text-lg mb-4 max-w-3xl mx-auto leading-relaxed">

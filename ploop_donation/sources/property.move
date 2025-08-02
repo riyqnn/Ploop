@@ -5,6 +5,7 @@ module ploop_donation::property {
     use sui::sui::SUI;
     use sui::event;
     use sui::transfer;
+    use std::string::{Self, String};
 
     // Error codes
     const E_TOO_MANY_IMAGES: u64 = 0;
@@ -13,186 +14,198 @@ module ploop_donation::property {
     const E_INVALID_PROPERTY_STATUS: u64 = 101;
     const E_INVALID_CERTIFICATE_TYPE: u64 = 102;
 
-    /// Enum tipe properti
+    /// Property type enum
     public enum PropertyType has copy, drop, store {
-        Rumah,
-        Apartemen,
-        Ruko,
-        Kost,
-        Gudang
+        House,
+        Apartment,
+        Shop,
+        Boarding,
+        Warehouse
     }
 
-    /// Enum status properti
+    /// Property status enum
     public enum PropertyStatus has copy, drop, store {
-        Dijual,
-        Disewa
+        ForSale,
+        ForRent
     }
 
-    /// Enum jenis sertifikat
+    /// Certificate type enum
     public enum CertificateType has copy, drop, store {
         SHM,
         SHGB,
-        Lainnya
+        Other
     }
 
-    /// Struct data properti (immutable after creation)
+    /// Property data struct (immutable after creation)
     public struct Property has key, store {
         id: UID,
-        latitude: vector<u8>,
-        longitude: vector<u8>,
-        nama: vector<u8>,
-        alamat: vector<u8>,
-        kontak_wa: vector<u8>,
-        tipe: PropertyType,
+        latitude: String,
+        longitude: String,
+        name: String,
+        address: String,
+        whatsapp_contact: String,
+        property_type: PropertyType,
         status: PropertyStatus,
-        harga: u64, // harga dalam MIST (1 SUI = 1_000_000_000 MIST)
-        luas_bangunan: u64,
-        luas_tanah: u64,
-        sertifikat: CertificateType,
-        sertifikat_lainnya: vector<u8>,
-        gambar_urls: vector<vector<u8>>, // max 10 URL gambar
-        dokumen_url: vector<u8>, // PDF dokumen bukti kepemilikan
-        pemilik: address
+        price: u64, // price in MIST (1 SUI = 1_000_000_000 MIST)
+        building_area: u64,
+        land_area: u64,
+        certificate: CertificateType,
+        other_certificate: String,
+        image_urls: vector<String>, // max 10 image URLs
+        document_url: String, // PDF document proof of ownership
+        owner: address
     }
 
-    /// Event ketika properti didaftarkan
+    /// Event when property is registered
     public struct PropertyRegistered has copy, drop {
         property_id: address,
-        pemilik: address,
-        nama: vector<u8>,
-        harga: u64
+        owner: address,
+        name: String,
+        price: u64
     }
 
-    /// Event ketika properti dibeli
+    /// Event when property is sold
     public struct PropertySold has copy, drop {
         property_id: address,
-        pemilik_lama: address,
-        pemilik_baru: address,
-        harga: u64
+        old_owner: address,
+        new_owner: address,
+        price: u64
     }
 
-    /// Fungsi untuk mendaftarkan properti baru
+    /// Function to register new property
     public entry fun register_property(
-        latitude: vector<u8>,
-        longitude: vector<u8>,
-        nama: vector<u8>,
-        alamat: vector<u8>,
-        kontak_wa: vector<u8>,
-        tipe: u8,
+        latitude: String,
+        longitude: String,
+        name: String,
+        address: String,
+        whatsapp_contact: String,
+        property_type: u8,
         status: u8,
-        harga: u64,
-        luas_bangunan: u64,
-        luas_tanah: u64,
-        sertifikat: u8,
-        sertifikat_lainnya: vector<u8>,
-        gambar_urls: vector<vector<u8>>,
-        dokumen_url: vector<u8>,
+        price: u64,
+        building_area: u64,
+        land_area: u64,
+        certificate: u8,
+        other_certificate: String,
+        image_urls: vector<String>,
+        document_url: String,
         ctx: &mut TxContext
     ) {
-        assert!(vector::length(&gambar_urls) <= 10, E_TOO_MANY_IMAGES);
+        assert!(vector::length(&image_urls) <= 10, E_TOO_MANY_IMAGES);
 
         let sender = tx_context::sender(ctx);
         let property_id = object::new(ctx);
         let property_address = object::uid_to_address(&property_id);
 
-        let property = Property {
+        let mut property = Property {
             id: property_id,
             latitude,
             longitude,
-            nama,
-            alamat,
-            kontak_wa,
-            tipe: property_type_from_u8(tipe),
+            name: string::utf8(b""), // temporary for name copy
+            address,
+            whatsapp_contact,
+            property_type: property_type_from_u8(property_type),
             status: property_status_from_u8(status),
-            harga,
-            luas_bangunan,
-            luas_tanah,
-            sertifikat: certificate_from_u8(sertifikat),
-            sertifikat_lainnya,
-            gambar_urls,
-            dokumen_url,
-            pemilik: sender,
+            price,
+            building_area,
+            land_area,
+            certificate: certificate_from_u8(certificate),
+            other_certificate,
+            image_urls,
+            document_url,
+            owner: sender,
         };
+
+        // Copy name for event and property
+        property.name = name;
+        let event_name = name;
 
         // Emit event
         event::emit(PropertyRegistered {
             property_id: property_address,
-            pemilik: sender,
-            nama: property.nama,
-            harga
+            owner: sender,
+            name: event_name,
+            price
         });
 
-        // Transfer properti ke pemilik
+        // Transfer property to owner
         transfer::public_transfer(property, sender);
     }
 
-    /// Fungsi untuk membeli properti
+    /// Function to buy property
     public entry fun buy_property(
         mut property: Property,
         payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
         let payment_value = coin::value(&payment);
-        assert!(payment_value >= property.harga, E_INSUFFICIENT_PAYMENT);
+        assert!(payment_value >= property.price, E_INSUFFICIENT_PAYMENT);
 
-        let pemilik_lama = property.pemilik;
-        let pembeli = tx_context::sender(ctx);
+        let old_owner = property.owner;
+        let buyer = tx_context::sender(ctx);
         let property_address = object::uid_to_address(&property.id);
-        let harga = property.harga;
+        let price = property.price;
 
-        // Update pemilik properti
-        property.pemilik = pembeli;
+        // Update property owner
+        property.owner = buyer;
 
         // Emit event
         event::emit(PropertySold {
             property_id: property_address,
-            pemilik_lama,
-            pemilik_baru: pembeli,
-            harga
+            old_owner,
+            new_owner: buyer,
+            price
         });
 
-        // Transfer SUI ke pemilik lama
-        transfer::public_transfer(payment, pemilik_lama);
+        // Transfer SUI to old owner
+        transfer::public_transfer(payment, old_owner);
 
-        // Transfer kepemilikan properti ke pembeli
-        transfer::public_transfer(property, pembeli);
+        // Transfer property ownership to buyer
+        transfer::public_transfer(property, buyer);
     }
 
     /// Helper function to convert u8 to PropertyType
-    fun property_type_from_u8(_tipe: u8): PropertyType {
-        if (_tipe == 0) return PropertyType::Rumah;
-        if (_tipe == 1) return PropertyType::Apartemen;
-        if (_tipe == 2) return PropertyType::Ruko;
-        if (_tipe == 3) return PropertyType::Kost;
-        if (_tipe == 4) return PropertyType::Gudang;
+    fun property_type_from_u8(_type: u8): PropertyType {
+        if (_type == 0) return PropertyType::House;
+        if (_type == 1) return PropertyType::Apartment;
+        if (_type == 2) return PropertyType::Shop;
+        if (_type == 3) return PropertyType::Boarding;
+        if (_type == 4) return PropertyType::Warehouse;
         abort E_INVALID_PROPERTY_TYPE
     }
 
     /// Helper function to convert u8 to PropertyStatus
     fun property_status_from_u8(_status: u8): PropertyStatus {
-        if (_status == 0) return PropertyStatus::Dijual;
-        if (_status == 1) return PropertyStatus::Disewa;
+        if (_status == 0) return PropertyStatus::ForSale;
+        if (_status == 1) return PropertyStatus::ForRent;
         abort E_INVALID_PROPERTY_STATUS
     }
 
     /// Helper function to convert u8 to CertificateType
-    fun certificate_from_u8(_sertifikat: u8): CertificateType {
-        if (_sertifikat == 0) return CertificateType::SHM;
-        if (_sertifikat == 1) return CertificateType::SHGB;
-        if (_sertifikat == 2) return CertificateType::Lainnya;
+    fun certificate_from_u8(_certificate: u8): CertificateType {
+        if (_certificate == 0) return CertificateType::SHM;
+        if (_certificate == 1) return CertificateType::SHGB;
+        if (_certificate == 2) return CertificateType::Other;
         abort E_INVALID_CERTIFICATE_TYPE
     }
 
     // === View Functions ===
-    public fun get_property_info(property: &Property): (vector<u8>, u64, address) {
-        (property.nama, property.harga, property.pemilik)
+    public fun get_property_info(property: &Property): (String, u64, address) {
+        (property.name, property.price, property.owner)
     }
 
-    public fun get_location(property: &Property): (vector<u8>, vector<u8>) {
+    public fun get_location(property: &Property): (String, String) {
         (property.latitude, property.longitude)
     }
 
     public fun get_details(property: &Property): (u64, u64, CertificateType) {
-        (property.luas_bangunan, property.luas_tanah, property.sertifikat)
+        (property.building_area, property.land_area, property.certificate)
+    }
+
+    public fun get_contact_info(property: &Property): (String, String) {
+        (property.whatsapp_contact, property.address)
+    }
+
+    public fun get_images_and_docs(property: &Property): (vector<String>, String) {
+        (property.image_urls, property.document_url)
     }
 }
